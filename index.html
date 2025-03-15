@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Singapore PSI Data</title>
+  <style>
+    /* Paper-inspired style with transparent table and chart container */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: #f5f5f5; /* off-white paper-like background */
+      color: #212121;      /* dark text */
+      font-family: 'Roboto', sans-serif;
+      margin: 0;
+      padding: 2rem 0;
+    }
+    .main-container {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+    h1 {
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      font-size: 1.8rem;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+    .timestamp {
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      text-align: center;
+      color: #757575;
+    }
+    /********************************************
+     * Table styling: transparent background and no borders
+     ********************************************/
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 2rem;
+      background: transparent;
+      border: none;
+    }
+    thead tr th {
+      text-align: center;
+      padding: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: transparent;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    /* Set header text color for each region column */
+    thead tr th:nth-child(2) { color: #3F51B5; } /* West: Indigo */
+    thead tr th:nth-child(3) { color: #E91E63; } /* East: Pink */
+    thead tr th:nth-child(4) { color: #FF9800; } /* Central: Orange */
+    thead tr th:nth-child(5) { color: #4CAF50; } /* South: Green */
+    thead tr th:nth-child(6) { color: #009688; } /* North: Teal */
+    tbody tr td {
+      text-align: center;
+      padding: 0.75rem;
+      border-bottom: 1px solid #eeeeee;
+    }
+    tfoot tr td {
+      text-align: center;
+      padding: 0.75rem;
+      background: transparent;
+      color: #757575;
+      border-top: 1px solid #e0e0e0;
+    }
+    /********************************************
+     * Chart container styling: transparent background and no border
+     ********************************************/
+    .chart-container {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 1rem 0;
+      margin-bottom: 2rem;
+    }
+    .chart-container h2 {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    #psiChart {
+      width: 100%;
+    }
+    @media (max-width: 900px) {
+      .main-container {
+        padding: 0 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <h1>Singapore PSI Real-Time Data</h1>
+    <p id="timestamp" class="timestamp"></p>
+    <!-- Table for current PSI -->
+    <table id="psiTable">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>West</th>
+          <th>East</th>
+          <th>Central</th>
+          <th>South</th>
+          <th>North</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Populated by JavaScript -->
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="6">Data courtesy of data.gov.sg</td>
+        </tr>
+      </tfoot>
+    </table>
+    <!-- Chart container for daily average PSI -->
+    <div class="chart-container">
+      <h2>Daily Average PSI (24-hour) - Last 7 Days</h2>
+      <canvas id="psiChart"></canvas>
+    </div>
+  </div>
+  <!-- Load Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const timestampEl = document.getElementById("timestamp");
+    const regions = ["west", "east", "central", "south", "north"];
+    window.onload = () => {
+      fetchPSIData();
+      fetchPSIHistory();
+    };
+    /***********************************************
+     * 1) FETCH CURRENT PSI DATA (table)
+     ***********************************************/
+    async function fetchPSIData() {
+      try {
+        const url = "https://api.data.gov.sg/v1/environment/psi";
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.items || data.items.length === 0) {
+          timestampEl.textContent = "No data available";
+          clearTable();
+          return;
+        }
+        const latestItem = data.items[0];
+        const readings = latestItem.readings;
+        const timestamp = latestItem.timestamp;
+        timestampEl.textContent = "Data last updated: " + new Date(timestamp).toLocaleString();
+        populatePSITable(readings);
+      } catch (error) {
+        console.error("Error fetching PSI data:", error);
+        timestampEl.textContent = "Error fetching data.";
+        clearTable();
+      }
+    }
+    function clearTable() {
+      document.querySelector("#psiTable tbody").innerHTML = "";
+    }
+    function populatePSITable(readings) {
+      clearTable();
+      const tbody = document.querySelector("#psiTable tbody");
+      const metrics = Object.keys(readings);
+      let rowsHtml = "";
+      metrics.forEach(metric => {
+        let row = `<tr><td>${metric}</td>`;
+        regions.forEach(region => {
+          const val = readings[metric][region];
+          row += `<td>${val}</td>`;
+        });
+        row += "</tr>";
+        rowsHtml += row;
+      });
+      tbody.innerHTML = rowsHtml;
+    }
+    /***********************************************
+     * 2) FETCH HISTORICAL PSI DATA (daily average)
+     ***********************************************/
+    async function fetchPSIHistory() {
+      const today = new Date();
+      let allItems = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().slice(0, 10);
+        try {
+          const url = `https://api.data.gov.sg/v1/environment/psi?date=${dateStr}`;
+          const response = await fetch(url);
+          const data = await response.json();
+          if (data && data.items && data.items.length > 0) {
+            allItems.push(...data.items);
+          }
+        } catch (error) {
+          console.error("Error fetching PSI data for", dateStr, error);
+        }
+      }
+      let dailyAggregation = {};
+      allItems.forEach(item => {
+        const day = item.timestamp.substring(0, 10);
+        if (!dailyAggregation[day]) {
+          dailyAggregation[day] = {};
+          regions.forEach(r => {
+            dailyAggregation[day][r] = { sum: 0, count: 0 };
+          });
+        }
+        const reading = item.readings?.psi_twenty_four_hourly;
+        if (reading) {
+          regions.forEach(r => {
+            dailyAggregation[day][r].sum += reading[r];
+            dailyAggregation[day][r].count++;
+          });
+        }
+      });
+      let labels = [];
+      let regionData = { west: [], east: [], central: [], south: [], north: [] };
+      let days = Object.keys(dailyAggregation).sort();
+      days.forEach(day => {
+        const formattedDate = new Date(day).toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'short'
+        });
+        labels.push(formattedDate);
+        regions.forEach(r => {
+          const agg = dailyAggregation[day][r];
+          const avg = agg.count > 0 ? agg.sum / agg.count : null;
+          regionData[r].push(avg);
+        });
+      });
+      renderChart(labels, regionData);
+    }
+    /***********************************************
+     * Render the Chart.js line chart with legend enabled
+     * and interactive parts disabled (no tooltips, no events).
+     ***********************************************/
+    function renderChart(labels, regionData) {
+      const canvas = document.getElementById("psiChart");
+      const ctx = canvas.getContext("2d");
+      if (window.psiChartInstance) {
+        window.psiChartInstance.destroy();
+      }
+      const colorWest    = "#3F51B5";  // Indigo
+      const colorEast    = "#E91E63";  // Pink
+      const colorCentral = "#FF9800";  // Orange
+      const colorSouth   = "#4CAF50";  // Green
+      const colorNorth   = "#009688";  // Teal
+      window.psiChartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "West",
+              data: regionData.west,
+              borderColor: colorWest,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointBackgroundColor: "#fff",
+              tension: 0.2
+            },
+            {
+              label: "East",
+              data: regionData.east,
+              borderColor: colorEast,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointBackgroundColor: "#fff",
+              tension: 0.2
+            },
+            {
+              label: "Central",
+              data: regionData.central,
+              borderColor: colorCentral,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointBackgroundColor: "#fff",
+              tension: 0.2
+            },
+            {
+              label: "South",
+              data: regionData.south,
+              borderColor: colorSouth,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointBackgroundColor: "#fff",
+              tension: 0.2
+            },
+            {
+              label: "North",
+              data: regionData.north,
+              borderColor: colorNorth,
+              borderWidth: 3,
+              pointRadius: 4,
+              pointBackgroundColor: "#fff",
+              tension: 0.2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          scales: {
+            x: {
+              display: true,
+              ticks: { color: "#212121" },
+              grid: { display: false }
+            },
+            y: {
+              display: true,
+              min: 10,
+              max: 50,
+              ticks: {
+                color: "#212121",
+                stepSize: 1,
+                callback: function(value) {
+                  // Only show labels for 10, 20, 30, 40, 50
+                  if ([10, 20, 30, 40, 50].includes(value)) {
+                    return value;
+                  }
+                  return "";
+                }
+              },
+              grid: { display: true, color: "#e0e0e0" }
+            }
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: "bottom",
+              labels: { color: "#212121" }
+            },
+            tooltip: {
+              enabled: false  // Disable tooltips
+            }
+          },
+          interaction: { mode: "index", intersect: false },
+          events: [] // Disable interactive events
+        }
+      });
+    }
+  </script>
+</body>
+</html>
